@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 영화 감정 추천</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f5f6fa;
+            color: #2d3436;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 { color: #6c5ce7; margin-bottom: 30px; }
+
+        /* 감정 버튼 */
+        .emotion-container {
+            display: flex; flex-wrap: wrap; justify-content: center;
+            gap: 10px; max-width: 800px; margin-bottom: 20px;
+        }
+        .emotion-btn {
+            padding: 10px 20px; border: 2px solid #a29bfe; border-radius: 25px;
+            background: white; cursor: pointer; font-size: 1rem; transition: all 0.2s;
+        }
+        .emotion-btn:hover { background-color: #dfe6e9; }
+        .emotion-btn.selected {
+            background-color: #6c5ce7; color: white; border-color: #6c5ce7; transform: scale(1.05);
+        }
+
+        /* 년도 선택 */
+        .year-selector {
+            margin: 10px 0 20px 0; padding: 15px 30px; background: white;
+            border-radius: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center;
+        }
+        .year-selector select {
+            padding: 5px 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 1rem; margin: 0 5px;
+        }
+        .year-selector label { font-weight: bold; margin-right: 10px; }
+
+        /* 추천 버튼 */
+        #recommend-btn {
+            background-color: #6c5ce7; color: white; border: none; padding: 15px 50px;
+            font-size: 1.2rem; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        #recommend-btn:hover { background-color: #5f27cd; transform: translateY(-2px); }
+        #recommend-btn:disabled { background-color: #b2bec3; cursor: not-allowed; transform: none; }
+
+        /* 더 보기 버튼 */
+        #load-more-btn {
+            display: none;
+            background-color: white; color: #6c5ce7; border: 2px solid #6c5ce7;
+            padding: 12px 40px; font-size: 1.1rem; border-radius: 30px;
+            cursor: pointer; margin-top: 30px; margin-bottom: 50px; font-weight: bold;
+            transition: all 0.2s;
+        }
+        #load-more-btn:hover { background-color: #f0f3ff; }
+
+        /* 로딩 & 결과 컨테이너 */
+        #loading { display: none; margin-top: 20px; font-size: 1.1rem; color: #6c5ce7; font-weight: bold; }
+        #results { margin-top: 40px; width: 100%; max-width: 900px; }
+
+        /* 🎬 영화 카드 스타일 */
+        .movie-card {
+            background: white; 
+            border-radius: 10px; 
+            overflow: hidden; 
+            display: flex;
+            margin-bottom: 20px; 
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1); 
+            animation: fadeIn 0.5s ease;
+            cursor: pointer; /* 클릭 가능 표시 */
+            transition: transform 0.2s;
+        }
+        .movie-card:hover {
+            transform: scale(1.02); /* 마우스 올리면 살짝 커짐 */
+            box-shadow: 0 5px 15px rgba(108, 92, 231, 0.3);
+        }
+        .movie-poster { width: 120px; object-fit: cover; flex-shrink: 0; }
+        .movie-info { padding: 20px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center;}
+        
+        .movie-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 5px; }
+        .movie-title { font-size: 1.3rem; font-weight: bold; color: #2d3436; }
+        .movie-director { font-size: 0.9rem; color: #636e72; font-weight: normal; } 
+        
+        .movie-meta { color: #b2bec3; font-size: 0.85rem; }
+        .click-hint { margin-top: 10px; font-size: 0.8rem; color: #6c5ce7; font-weight: bold; }
+
+        /* 🖥️ 모달(팝업) 스타일 [수정됨] */
+        .modal-overlay {
+            display: none; /* 기본 숨김 */
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7); z-index: 1000;
+            justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: white; 
+            width: 90%; 
+            max-width: 500px; /* 모달 너비 */
+            max-height: 90vh; /* 화면 높이의 90%까지만 차지 */
+            border-radius: 15px; 
+            overflow-y: auto; /* 내용이 넘치면 세로 스크롤 허용 */
+            position: relative;
+            display: flex; 
+            flex-direction: column;
+            animation: slideUp 0.3s ease;
+        }
+        
+        /* [수정됨] 모달 포스터 이미지 스타일 */
+        .modal-header-img {
+            width: auto;
+            max-width: 80%;       /* 가로 너비는 80%까지만 */
+            height: auto;
+            max-height: 400px;    /* 세로 높이 제한 (스크롤 유도) */
+            object-fit: contain;  /* 이미지 전체가 보이도록 설정 (잘림 방지) */
+            display: block;
+            margin: 30px auto 10px; /* 중앙 정렬 및 여백 */
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); /* 그림자 효과 */
+        }
+
+        .modal-body { padding: 25px; }
+        .modal-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 5px; text-align: center; }
+        .modal-meta { color: #636e72; margin-bottom: 20px; font-size: 0.95rem; text-align: center; }
+        
+        .modal-section { margin-bottom: 20px; }
+        .modal-label { font-weight: bold; color: #2d3436; margin-bottom: 5px; display: block; }
+        .modal-text { line-height: 1.6; color: #555; font-size: 0.95rem; }
+        
+        /* 음식과 추천이유 강조 스타일 */
+        .ai-box { background: #f0f3ff; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #6c5ce7; }
+        .food-highlight { color: #d63031; font-weight: bold; font-size: 1.1rem; }
+
+        .close-btn {
+            position: absolute; top: 15px; right: 15px;
+            background: rgba(0,0,0,0.6); color: white; border: none;
+            width: 35px; height: 35px; border-radius: 50%;
+            font-size: 1.2rem; cursor: pointer; display: flex; justify-content: center; align-items: center;
+            z-index: 10;
+        }
+        .close-btn:hover { background: rgba(0,0,0,0.8); }
+
+        @keyframes slideUp { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <h1>🎬 영화 추천</h1>
+
+    <div class="emotion-container">
+        <button class="emotion-btn" data-val="joy">기쁨</button>
+        <button class="emotion-btn" data-val="sadness">슬픔</button>
+        <button class="emotion-btn" data-val="anger">분노</button>
+        <button class="emotion-btn" data-val="anxiety">불안/긴장</button>
+        <button class="emotion-btn" data-val="love">사랑/설렘</button>
+        <button class="emotion-btn" data-val="comfort">위로/휴식</button>
+        <button class="emotion-btn" data-val="fear">공포</button>
+        <button class="emotion-btn" data-val="excitement">신남/흥미</button>
+        <button class="emotion-btn" data-val="boredom">심심함</button>
+        <button class="emotion-btn" data-val="nostalgia">그리움</button>
+        <button class="emotion-btn" data-val="curiosity">호기심</button>
+        <button class="emotion-btn" data-val="solitude">고독</button>
+        <button class="emotion-btn" data-val="hope">희망</button>
+        <button class="emotion-btn" data-val="chaos">혼란</button>
+        <button class="emotion-btn" data-val="passion">열정</button>
+        <button class="emotion-btn" data-val="insanity">광기</button>
+    </div>
+
+    <div class="year-selector">
+        <label>📅 개봉 시기:</label>
+        <select id="start-year"></select>
+        <span> ~ </span>
+        <select id="end-year"></select>
+    </div>
+
+    <button id="recommend-btn" onclick="startNewSearch()">추천받기 ✨</button>
+
+    <div id="loading"> 영화를 분석 중입니다...</div>
+    <div id="results"></div>
+
+    <button id="load-more-btn" onclick="loadMore()">👇 더 추천받기 (Click)</button>
+
+    <div id="movie-modal" class="modal-overlay" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="close-btn" onclick="closeModal()">×</button>
+            <img id="m-poster" class="modal-header-img" src="" alt="Poster">
+            <div class="modal-body">
+                <div class="modal-title" id="m-title">영화 제목</div>
+                <div class="modal-meta" id="m-meta">2024 | 감독 | 장르</div>
+                
+                <div class="ai-box">
+                    <div class="modal-label">🤖 AI 추천 이유</div>
+                    <div class="modal-text" id="m-reason">...</div>
+                </div>
+
+                <div class="ai-box" style="border-color: #ff7675; background: #fff0f0;">
+                    <div class="modal-label">🍿 추천 간식</div>
+                    <div class="food-highlight" id="m-food">팝콘</div>
+                </div>
+
+                <div class="modal-section">
+                    <div class="modal-label">📜 줄거리</div>
+                    <div class="modal-text" id="m-plot">...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedEmotions = [];
+        let currentPage = 1;
+        let currentKeywords = null;
+        let loadedMovies = []; 
+
+        window.onload = function() {
+            initEmotionButtons();
+            initYearSelects();
+        };
+
+        function initEmotionButtons() {
+            document.querySelectorAll('.emotion-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const val = btn.getAttribute('data-val');
+                    if (selectedEmotions.includes(val)) {
+                        selectedEmotions = selectedEmotions.filter(e => e !== val);
+                        btn.classList.remove('selected');
+                    } else {
+                        if (selectedEmotions.length >= 3) {
+                            alert("최대 3개까지만 선택할 수 있습니다.");
+                            return;
+                        }
+                        selectedEmotions.push(val);
+                        btn.classList.add('selected');
+                    }
+                });
+            });
+        }
+
+        function initYearSelects() {
+            const start = document.getElementById('start-year');
+            const end = document.getElementById('end-year');
+            const year = new Date().getFullYear();
+            for (let i = year; i >= 1960; i--) {
+                start.add(new Option(i + "년", i));
+                end.add(new Option(i + "년", i));
+            }
+            start.value = "2000";
+            end.value = year;
+        }
+
+        function startNewSearch() {
+            currentPage = 1;
+            currentKeywords = null;
+            loadedMovies = []; 
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('load-more-btn').style.display = 'none';
+            fetchRecommendations();
+        }
+
+        function loadMore() {
+            currentPage++;
+            fetchRecommendations();
+        }
+
+        function fetchRecommendations() {
+            if (selectedEmotions.length === 0) {
+                alert("감정을 선택해주세요!"); return;
+            }
+
+            const loading = document.getElementById('loading');
+            const btn = document.getElementById('recommend-btn');
+            const loadMoreBtn = document.getElementById('load-more-btn');
+
+            loading.style.display = 'block';
+            btn.disabled = true;
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.innerText = "로딩 중...";
+
+            let sYear = parseInt(document.getElementById('start-year').value);
+            let eYear = parseInt(document.getElementById('end-year').value);
+            if (sYear > eYear) [sYear, eYear] = [eYear, sYear];
+
+            fetch('/recommend_by_emotion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    emotions: selectedEmotions,
+                    start_year: sYear,
+                    end_year: eYear,
+                    page: currentPage,
+                    keywords: currentKeywords
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                loadMoreBtn.disabled = false;
+                loadMoreBtn.innerText = "👇 더 추천받기 (Click)";
+
+                if (data.status === 'success') {
+                    currentKeywords = data.used_keywords;
+                    appendResults(data.results);
+                    
+                    if (data.results.length < 5) {
+                        loadMoreBtn.style.display = 'none';
+                    } else {
+                        loadMoreBtn.style.display = 'block';
+                    }
+
+                } else {
+                    alert("오류: " + data.message);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                loading.style.display = 'none';
+                btn.disabled = false;
+                alert("서버 통신 실패");
+            });
+        }
+
+        function appendResults(movies) {
+            const container = document.getElementById('results');
+            
+            if (movies.length === 0 && currentPage === 1) {
+                container.innerHTML = "<p style='text-align:center;'>조건에 맞는 영화가 없습니다.</p>";
+                return;
+            }
+
+            const startIndex = loadedMovies.length;
+            loadedMovies = loadedMovies.concat(movies);
+
+            movies.forEach((movie, idx) => {
+                const globalIndex = startIndex + idx;
+
+                const card = document.createElement('div');
+                card.className = 'movie-card';
+                card.onclick = () => openModal(globalIndex);
+
+                card.innerHTML = `
+                    <img src="${movie.poster}" class="movie-poster" onerror="this.src='https://via.placeholder.com/150x225?text=No+Image'">
+                    <div class="movie-info">
+                        <div class="movie-header">
+                            <span class="movie-title">${movie.title}</span>
+                            <span class="movie-director">${movie.director}</span>
+                        </div>
+                        <div class="movie-meta">${movie.year} | ${movie.genre} | ⭐ ${movie.score}%</div>
+                        <div class="click-hint">👆 클릭하여 상세 정보와 추천 간식 보기</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function openModal(index) {
+            const movie = loadedMovies[index];
+            if (!movie) return;
+
+            document.getElementById('m-poster').src = movie.poster;
+            document.getElementById('m-title').innerText = movie.title;
+            document.getElementById('m-meta').innerText = `${movie.year}년 • ${movie.director} • ${movie.genre}`;
+            document.getElementById('m-reason').innerText = movie.reason;
+            document.getElementById('m-food').innerText = "🍔 " + movie.food; 
+            document.getElementById('m-plot').innerText = movie.overview || "줄거리 정보가 없습니다.";
+
+            const modal = document.getElementById('movie-modal');
+            modal.style.display = 'flex';
+        }
+
+        function closeModal(event) {
+            if (!event || event.target.id === 'movie-modal' || event.target.className === 'close-btn') {
+                document.getElementById('movie-modal').style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
